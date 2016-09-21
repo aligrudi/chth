@@ -1,0 +1,12 @@
+struct conn *conn_make(int fd);
+int conn_send(struct conn *conn, void *buf, long len);
+int conn_recv(struct conn *conn, void *buf, long len);
+int conn_recvall(struct conn *conn, void **buf, long *len);
+int conn_recvbuf(struct conn *conn, void **buf, long *len);
+int conn_events(struct conn *conn);
+int conn_poll(struct conn *conn, int events);
+int conn_hung(struct conn *conn);
+int conn_fd(struct conn *conn);
+long conn_len(struct conn *conn);
+void conn_hang(struct conn *conn);
+void conn_free(struct conn *conn);
