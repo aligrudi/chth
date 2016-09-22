@@ -73,6 +73,10 @@ int conn_poll(struct conn *conn, int events)
 					return 1;
 			nr = read(conn->fd, conn->ibuf + conn->ibuf_n,
 					conn->ibuf_sz - conn->ibuf_n);
+			if (nr == 0) {		/* EOF */
+				conn_hang(conn);
+				return 1;
+			}
 			if (nr <= 0)
 				break;
 			conn->ibuf_n += nr;
