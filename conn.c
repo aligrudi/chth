@@ -16,6 +16,7 @@ struct conn {
 	void *obuf;		/* output buffers */
 	long obuf_n;		/* number of bytes in obuf */
 	long obuf_sz;		/* size of obuf[] */
+	int dosend, dorecv;	/* fd can be read from or written to */
 };
 
 struct conn *conn_make(int fd)
@@ -23,6 +24,8 @@ struct conn *conn_make(int fd)
 	struct conn *conn = malloc(sizeof(*conn));
 	memset(conn, 0, sizeof(*conn));
 	conn->fd = fd;
+	conn->dosend = 1;
+	conn->dorecv = 1;
 	return conn;
 }
 
@@ -44,8 +47,9 @@ void conn_free(struct conn *conn)
 int conn_events(struct conn *conn)
 {
 	if (conn->fd >= 0)
-		return POLLRDNORM | POLLHUP | POLLERR | POLLNVAL |
-			(conn->obuf_n ? POLLWRNORM : 0);
+		return POLLHUP | POLLERR | POLLNVAL |
+			(conn->dorecv ? POLLRDNORM : 0) |
+			(conn->dosend && conn->obuf_n ? POLLWRNORM : 0);
 	return 0;
 }
 
@@ -67,20 +71,15 @@ int conn_poll(struct conn *conn, int events)
 {
 	int nr, nw;
 	if (events & POLLRDNORM) {
-		while (1) {
-			if (conn->ibuf_n == conn->ibuf_sz)
-				if (mextend(&(conn->ibuf), &(conn->ibuf_sz), 1))
-					return 1;
-			nr = read(conn->fd, conn->ibuf + conn->ibuf_n,
-					conn->ibuf_sz - conn->ibuf_n);
-			if (nr == 0) {		/* EOF */
-				conn_hang(conn);
+		if (conn->ibuf_n == conn->ibuf_sz)
+			if (mextend(&(conn->ibuf), &(conn->ibuf_sz), 1))
 				return 1;
-			}
-			if (nr <= 0)
-				break;
+		nr = read(conn->fd, conn->ibuf + conn->ibuf_n,
+				conn->ibuf_sz - conn->ibuf_n);
+		if (nr > 0)
 			conn->ibuf_n += nr;
-		}
+		if (nr == 0)		/* socket is half duplex */
+			conn->dorecv = 0;
 	}
 	if (events & POLLWRNORM) {
 		nw = write(conn->fd, conn->obuf, conn->obuf_n);
@@ -90,6 +89,8 @@ int conn_poll(struct conn *conn, int events)
 					conn->obuf_n - nw);
 			conn->obuf_n -= nw;
 		}
+		if (nw == 0)
+			conn->dosend = 0;
 	}
 	if (events & (POLLHUP | POLLERR | POLLNVAL)) {
 		conn_hang(conn);
@@ -110,7 +111,7 @@ int conn_send(struct conn *conn, void *buf, long len)
 
 int conn_hung(struct conn *conn)
 {
-	return conn->fd < 0;
+	return conn->fd < 0 || (!conn->dosend && !conn->dorecv);
 }
 
 long conn_len(struct conn *conn)
