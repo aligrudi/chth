@@ -359,7 +359,7 @@ static int ct_submit(struct conn *conn)
 }
 
 static struct conn *conns[CTCONNS];	/* server connections */
-static int conns_wait[CTCONNS];		/* wait for 1:line or 2:data */
+static int conns_lim[CTCONNS];		/* read until 1:EOL or 2:EOF */
 static int conns_ts[CTCONNS];		/* start timestamp (in seconds) */
 
 static int ct_poll(int fd)
@@ -388,28 +388,28 @@ static int ct_poll(int fd)
 		if (fds[i].revents) {
 			if (conn_poll(conns[i], fds[i].revents))
 				conn_hang(conns[i]);
-			if (conns_wait[i] == 1 && conn_eol(conns[i]) >= 0) {
-				conns_wait[i] = 0;
+			if (conns_lim[i] == 1 && conn_eol(conns[i]) >= 0) {
+				conns_lim[i] = 0;
 				if (!conn_matchbeg(conns[i], "register", 8)) {
 					ct_register(conns[i]);
 				} else if (!conn_matchbeg(conns[i], "submit", 6)) {
-					conns_wait[i] = 2;
+					conns_lim[i] = 2;
 				} else if (!conn_matchbeg(conns[i], "report", 6)) {
 					ct_report(conns[i]);
 				} else {
 					conn_hang(conns[i]);
 				}
 			}
-			if (conns_wait[i] == 2) {
+			if (conns_lim[i] == 2) {
 				endmarker(conns[i], end);
 				if (conn_hung(conns[i]) || !conn_matchend(conns[i], end, strlen(end))) {
 					ct_submit(conns[i]);
-					conns_wait[i] = 0;
+					conns_lim[i] = 0;
 				}
 				if (conn_len(conns[i]) > CTSUBSZ)
 					conn_hang(conns[i]);
 			}
-			if (conns_wait[i] == 0 && !(conn_events(conns[i]) & POLLWRNORM))
+			if (conns_lim[i] == 0 && !(conn_events(conns[i]) & POLLWRNORM))
 				conn_hang(conns[i]);
 		}
 	}
@@ -428,7 +428,7 @@ static int ct_poll(int fd)
 			fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL) | O_NONBLOCK);
 			if (i < CTCONNS) {
 				conns[i] = conn_make(cfd);
-				conns_wait[i] = 1;
+				conns_lim[i] = 1;
 				conns_ts[i] = time(NULL);
 			} else {
 				close(cfd);
