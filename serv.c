@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include "conn.h"
 
-#define CTPORT		"2233"		/* server port */
+#define CTPORT		"40"		/* server port */
 #define CTCONNS		16		/* maximum simultaneous connections */
 #define LLEN		256		/* maximum input line length */
 #define CTSUBS		32		/* maximum queued submissions */
