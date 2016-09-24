@@ -36,8 +36,7 @@
 static void conn_printf(struct conn *conn, char *fmt, ...);
 static int conn_eol(struct conn *conn);
 static int conn_recveol(struct conn *conn, char *buf, int len);
-static int conn_matchbeg(struct conn *conn, void *s, long slen);
-static int conn_matchend(struct conn *conn, void *s, long slen);
+static int conn_ends(struct conn *conn, char *s);
 
 /* pending submission */
 struct sub {
@@ -195,15 +194,10 @@ static void sigchild(int sig)
 	}
 }
 
-static int ct_register(struct conn *conn)
+static int ct_register(struct conn *conn, char *req)
 {
-	char req[LLEN];
 	char user[LLEN], pass[LLEN];
 	int i;
-	if (conn_recveol(conn, req, sizeof(req))) {
-		conn_printf(conn, "register: bad input!\n");
-		return 1;
-	}
 	if (sscanf(req, "register %s %s", user, pass) != 2) {
 		conn_printf(conn, "register: insufficient arguments!\n");
 		return 1;
@@ -232,17 +226,12 @@ static int ct_register(struct conn *conn)
 	return 0;
 }
 
-static int ct_report(struct conn *conn)
+static int ct_report(struct conn *conn, char *req)
 {
 	char buf[1 << 12];
-	char req[LLEN];
 	char cont[LLEN];
 	char path[LLEN];
 	int statfd, nr, i;
-	if (conn_recveol(conn, req, sizeof(req))) {
-		conn_printf(conn, "report: bad input!\n");
-		return 1;
-	}
 	if (sscanf(req, "report %s", cont) != 1) {
 		conn_printf(conn, "report: insufficient arguments!\n");
 		return 1;
@@ -280,22 +269,12 @@ static int conts_find(char *cont)
 }
 
 /* find submit end marker */
-static void endmarker(struct conn *conn, char *marker)
+static void endmarker(char *req, char *end)
 {
-	char line[LLEN];
-	int eol = conn_eol(conn);
-	void *r;
 	char *s;
-	long rlen;
 	int i;
-	strcpy(marker, CTEOF);
-	if (eol < 0 || eol + 1 > sizeof(line))
-		return;
-	if (conn_recvbuf(conn, &r, &rlen))
-		return;
-	memcpy(line, r, eol);
-	line[eol] = '\0';
-	s = line;
+	strcpy(end, CTEOF);
+	s = req;
 	for (i = 0; i < 5; i++) {
 		while (*s && !isspace((unsigned char) *s))
 			s++;
@@ -303,23 +282,19 @@ static void endmarker(struct conn *conn, char *marker)
 			s++;
 	}
 	if (*s)
-		strcpy(marker, s);
+		strcpy(end, s);
 }
 
-static int ct_submit(struct conn *conn)
+static int ct_submit(struct conn *conn, char *req)
 {
 	char user[LLEN], pass[LLEN], cont[LLEN], lang[LLEN];
-	char path[LLEN], req[LLEN], end[LLEN];
+	char path[LLEN], end[LLEN];
 	void *buf;
 	long buflen;
 	int fd;
-	endmarker(conn, end);
-	if (conn_matchend(conn, end, strlen(end)))
+	endmarker(req, end);
+	if (conn_ends(conn, end))
 		end[0] = '\0';
-	if (conn_recveol(conn, req, sizeof(req))) {
-		conn_printf(conn, "submit: bad input!\n");
-		return 1;
-	}
 	if (sscanf(req, "submit %s %s %s %s", user, pass, cont, lang) != 4) {
 		conn_printf(conn, "submit: insufficient arguments!\n");
 		return 1;
@@ -358,14 +333,21 @@ static int ct_submit(struct conn *conn)
 	return 0;
 }
 
+static int ct_log(struct conn *conn, char *req)
+{
+	fputs(req, stderr);
+	return 0;
+}
+
 static struct conn *conns[CTCONNS];	/* server connections */
 static int conns_lim[CTCONNS];		/* read until 1:EOL or 2:EOF */
 static int conns_ts[CTCONNS];		/* start timestamp (in seconds) */
+static char conns_req[CTCONNS][LLEN];	/* connection request line */
 
 static int ct_poll(int fd)
 {
 	struct pollfd fds[CTCONNS + 1];
-	char end[LLEN];
+	char end[LLEN], cmd[LLEN];
 	int cfd;
 	int i;
 	for (i = 0; i < CTCONNS; i++)		/* kill slow connections */
@@ -389,21 +371,24 @@ static int ct_poll(int fd)
 			if (conn_poll(conns[i], fds[i].revents))
 				conn_hang(conns[i]);
 			if (conns_lim[i] == 1 && conn_eol(conns[i]) >= 0) {
+				conn_recveol(conns[i], conns_req[i], sizeof(conns_req[i]));
+				ct_log(conns[i], conns_req[i]);
+				sscanf(conns_req[i], "%s", cmd);
 				conns_lim[i] = 0;
-				if (!conn_matchbeg(conns[i], "register", 8)) {
-					ct_register(conns[i]);
-				} else if (!conn_matchbeg(conns[i], "submit", 6)) {
+				if (!strcmp("register", cmd)) {
+					ct_register(conns[i], conns_req[i]);
+				} else if (!strcmp("report", cmd)) {
+					ct_report(conns[i], conns_req[i]);
+				} else if (!strcmp("submit", cmd)) {
 					conns_lim[i] = 2;
-				} else if (!conn_matchbeg(conns[i], "report", 6)) {
-					ct_report(conns[i]);
 				} else {
 					conn_hang(conns[i]);
 				}
 			}
 			if (conns_lim[i] == 2) {
-				endmarker(conns[i], end);
-				if (conn_hung(conns[i]) || !conn_matchend(conns[i], end, strlen(end))) {
-					ct_submit(conns[i]);
+				endmarker(conns_req[i], end);
+				if (conn_hung(conns[i]) || !conn_ends(conns[i], end)) {
+					ct_submit(conns[i], conns_req[i]);
 					conns_lim[i] = 0;
 				}
 				if (conn_len(conns[i]) > CTSUBSZ)
@@ -484,20 +469,11 @@ static int conn_recveol(struct conn *conn, char *buf, int len)
 	return 0;
 }
 
-static int conn_matchbeg(struct conn *conn, void *s, long slen)
+/* check if the connection ends with the given string */
+static int conn_ends(struct conn *conn, char *s)
 {
 	void *r;
-	long rlen;
-	if (conn_recvbuf(conn, &r, &rlen))
-		return 1;
-	if (rlen < slen)
-		return 1;
-	return memcmp(s, r, slen) != 0;
-}
-
-static int conn_matchend(struct conn *conn, void *s, long slen)
-{
-	void *r;
+	long slen = strlen(s);
 	long rlen;
 	if (conn_recvbuf(conn, &r, &rlen))
 		return 1;
