@@ -477,7 +477,7 @@ static int conn_ends(struct conn *conn, char *s)
 	long rlen;
 	if (conn_recvbuf(conn, &r, &rlen))
 		return 1;
-	if (rlen < slen || rlen == conn_eol(conn))
+	if (rlen < slen)
 		return 1;
 	return memcmp(s, r + rlen - slen, slen) != 0;
 }
