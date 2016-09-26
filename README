@@ -2,3 +2,32 @@ Challenging Thursdays
 =====================
 
 This is a small programming contest judge for "Challenging Thursdays".
+
+After building, the server program can be started as follows, taking
+the address of open contests as its arguments:
+
+  $ serv cont1 cont2 ... contN
+
+Each contest is specified as a directory containing several pairs of
+files, each of which specify a test case: the file XY, in which X and
+Y are both digits, is the input and XYo is the expected output (such
+as 00 and 00o).
+
+The server listens on TCP port 40 for incoming connections.  Each
+incoming connection can make one of the following requests:
+
+report CONT
+	Print submission statistics for contest CONT.
+register USERNAME PASSWORD
+	Register a user with the given username and password.
+submit USERNAME PASSWORD CONT LANG EOF
+	Submit a program for contest CONT in language LANG.  This
+	command should be followed by the contents of the program,
+	followed by a line containing nothing but EOF.  LANG can
+	be c for C, c++ for C++, py for Python, and sh for Shell.
+
+The following files are created by the server program.
+
+* USERS: The list of users and their passwords.
+* CONT.stat: Submission statistics for contest CONT.
+* logs/: Submitted files are stored in this directory.
