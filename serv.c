@@ -285,6 +285,13 @@ static void endmarker(char *req, char *end)
 		strcpy(end, s);
 }
 
+static int langok(char *lang)
+{
+	return !strcmp("c", lang) || !strcmp("c++", lang) ||
+		!strcmp("py", lang) || !strcmp("sh", lang) ||
+		!strcmp("elf", lang);
+}
+
 static int ct_submit(struct conn *conn, char *req)
 {
 	char user[LLEN], pass[LLEN], cont[LLEN], lang[LLEN];
@@ -301,6 +308,10 @@ static int ct_submit(struct conn *conn, char *req)
 	}
 	if (conts_find(cont) < 0) {
 		conn_printf(conn, "submit: contest is not open!\n");
+		return 1;
+	}
+	if (!langok(lang)) {
+		conn_printf(conn, "submit: unknown language!\n");
 		return 1;
 	}
 	if (users_login(user, pass)) {
