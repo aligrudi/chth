@@ -261,6 +261,8 @@ int main(int argc, char *argv[])
 			beg_ms = util_ts();
 			cmt = ct_exec(args, tdir, ".i", ".o", "/dev/null");
 			end_ms = util_ts();
+			if (cmt)
+				failed = 1;
 			if (!cmt && util_isfile(tdir_o) && !util_cmp(odat, tdir_o)) {
 				passes++;
 				tot_ms += end_ms - beg_ms;
