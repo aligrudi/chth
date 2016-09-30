@@ -188,7 +188,7 @@ static char *ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *ep
 static int compilefile(char *src, char *lang, char *out)
 {
 	char *cc = lang ? getcompiler(lang) : NULL;
-	char *argv[] = {cc, "-O2", "-o", out, src, NULL};
+	char *argv[] = {cc, "-O2", "-pthread", "-o", out, src, "-lm", NULL};
 	if (cc) {
 		int pid = fork();
 		int st;
