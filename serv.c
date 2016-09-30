@@ -285,11 +285,17 @@ static void endmarker(char *req, char *end)
 		strcpy(end, s);
 }
 
+static char *ct_langs[] = {
+	"c", "c++", "py", "py2", "py3", "sh", "elf",
+};
+
 static int langok(char *lang)
 {
-	return !strcmp("c", lang) || !strcmp("c++", lang) ||
-		!strcmp("py", lang) || !strcmp("sh", lang) ||
-		!strcmp("elf", lang);
+	int i;
+	for (i = 0; i < LEN(ct_langs); i++)
+		if (!strcmp(lang, ct_langs[i]))
+			return 1;
+	return 0;
 }
 
 static int ct_submit(struct conn *conn, char *req)

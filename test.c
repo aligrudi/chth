@@ -99,6 +99,10 @@ static char *getinterpreter(char *lang)
 		return "sh";
 	if (lang && !strcmp("py", lang))
 		return "python";
+	if (lang && !strcmp("py2", lang))
+		return "python2";
+	if (lang && !strcmp("py3", lang))
+		return "python3";
 	return NULL;
 }
 
