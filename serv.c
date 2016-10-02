@@ -24,11 +24,14 @@
 #define CTSUBS		32		/* maximum queued submissions */
 #define CTSUBSZ		(1 << 16)	/* maximum submission size */
 #define CTTIMEOUT	10		/* connection timeout in seconds */
+#define CTREGTIME	10		/* minimum gap between registerations */
+#define CTSUBTIME	10		/* minimum gap between submissions of a user */
 #define CTUSERS		"USERS"		/* file containing the list of users */
 #define CTLOGS		"logs"		/* directory to store the logs */
 #define CTTEST		"./test"	/* verification program */
 #define CTRESULT	"logs/test.out"	/* verification results file */
 #define CTEOF		"EOF\n"		/* default eof mark */
+#define CTRATECNT	32		/* user count in ratelimit_* */
 
 #define LEN(a)		((sizeof(a)) / sizeof((a)[0]))
 
@@ -44,7 +47,7 @@ struct sub {
 	char cont[LLEN];		/* contest name */
 	char lang[LLEN];		/* submission language */
 	char path[LLEN];		/* program path */
-	time_t date;			/* submission date */
+	long date;			/* submission date */
 	int valid;			/* pending submission */
 };
 
@@ -77,6 +80,38 @@ static int mksocket(char *addr, char *port)
 		return -1;
 	freeaddrinfo(addrinfo);
 	return fd;
+}
+
+static char ratelimit_user[CTRATECNT][LLEN];	/* submission user log */
+static long ratelimit_ts[CTRATECNT];		/* last submission timestamp */
+
+static int ratelimit_register(void)
+{
+	static long ts;
+	if (ts && ts + CTREGTIME > time(NULL))
+		return 1;
+	ts = time(NULL);
+	return 0;
+}
+
+static int ratelimit_submit(char *user)
+{
+	long now = time(NULL);
+	int i, j;
+	for (i = 0; i < LEN(ratelimit_ts); i++)
+		if (!strcmp(ratelimit_user[i], user))
+			break;
+	if (i < LEN(ratelimit_ts) && ratelimit_ts[i] + CTSUBTIME > now)
+		return 1;
+	if (i == LEN(ratelimit_ts)) {
+		i = 0;
+		for (j = 0; j < LEN(ratelimit_ts); j++)
+			if (ratelimit_ts[j] < ratelimit_ts[i])
+				i = j;
+		strcpy(ratelimit_user[i], user);
+	}
+	ratelimit_ts[i] = now;
+	return 0;
 }
 
 /* log in a user; return nonzero on failure */
@@ -221,6 +256,10 @@ static int ct_register(struct conn *conn, char *req)
 		conn_printf(conn, "register: user exists!\n");
 		return 1;
 	}
+	if (ratelimit_register()) {
+		conn_printf(conn, "register: many registerations, retry later!\n");
+		return 1;
+	}
 	users_add(user, pass);
 	conn_printf(conn, "register: user %s added.\n", user);
 	return 0;
@@ -320,6 +359,10 @@ static int ct_submit(struct conn *conn, char *req)
 		conn_printf(conn, "submit: unknown language!\n");
 		return 1;
 	}
+	if (ratelimit_submit(user)) {
+		conn_printf(conn, "submit: many submissions, retry later!\n");
+		return 1;
+	}
 	if (users_login(user, pass)) {
 		conn_printf(conn, "submit: failed to log in!\n");
 		return 1;
@@ -344,7 +387,7 @@ static int ct_submit(struct conn *conn, char *req)
 	if (!subs_add(user, cont, lang, path))
 		conn_printf(conn, "submit: submission queued.\n");
 	else
-		conn_printf(conn, "submit: too many submissions, retry later!\n");
+		conn_printf(conn, "submit: many submissions, retry later!\n");
 	if (!test_pid && subs_first() >= 0)
 		test_beg();
 	return 0;
