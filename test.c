@@ -267,10 +267,10 @@ int main(int argc, char *argv[])
 			end_ms = util_ts();
 			if (cmt)
 				failed = 1;
-			if (!cmt && util_isfile(tdir_o) && !util_cmp(odat, tdir_o)) {
+			if (!cmt && util_isfile(tdir_o) && !util_cmp(odat, tdir_o))
 				passes++;
+			if (!cmt)
 				tot_ms += end_ms - beg_ms;
-			}
 		}
 		unlink(tdir_i);
 		unlink(tdir_o);
