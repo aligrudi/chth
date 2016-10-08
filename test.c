@@ -145,7 +145,7 @@ static void util_slaughter(void)
 }
 
 /* execute epath, with ipath as stdin and opath as stdout; return NULL on success */
-static char *ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epath)
+static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epath)
 {
 	int pid, st;
 	int ret = 0;
@@ -186,15 +186,15 @@ static char *ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *ep
 			while (waitpid(pid, &st, 0) != pid)
 				if (util_ts() - beg > TIMEOUT * 2)
 					break;
-			return "Time Limit Exceeded";
+			return 'T';
 		}
 		if (WIFSIGNALED(st))
-			return "Runtime Error";
+			return 'R';
 		if (WEXITSTATUS(st))
-			return "Runtime Error";
-		return NULL;
+			return 'R';
+		return 0;
 	}
-	return "Fork Failed";
+	return 'F';
 }
 
 static int compilefile(char *src, char *lang, char *out)
@@ -234,12 +234,15 @@ static int compilefile(char *src, char *lang, char *out)
 
 int main(int argc, char *argv[])
 {
-	char *cont, *prog, *lang, *cmt = NULL;
+	char *cont, *prog, *lang;
 	char idat[LLEN], odat[LLEN];
 	char tdir[LLEN], tdir_i[LLEN], tdir_o[LLEN], tdir_s[LLEN], tdir_x[LLEN];
+	char stat[128] = "";
 	char *args[16];
 	long beg_ms, end_ms, tot_ms = 0;
-	int passes = 0, failed = 0, i;
+	int cor = 0;
+	int cmt = 0;
+	int i;
 	if (argc != 4) {
 		fprintf(stderr, "usage: %s cont prog lang\n", argv[0]);
 		return 1;
@@ -264,10 +267,8 @@ int main(int argc, char *argv[])
 	chown(tdir, TESTUID, TESTGID);
 	util_cp(prog, tdir_s);
 	chown(tdir_s, TESTUID, TESTGID);
-	if (compilefile(tdir_s, lang, tdir_x)) {
-		failed = 1;
-		cmt = "Compilation Error";
-	}
+	if (compilefile(tdir_s, lang, tdir_x))
+		cmt = 'E';
 	unlink(tdir_s);
 	if (getinterpreter(lang)) {
 		char **intr = getinterpreter(lang);
@@ -280,32 +281,34 @@ int main(int argc, char *argv[])
 	chmod(tdir_x, 0700);
 	for (i = 0; i < 100; i++) {
 		snprintf(idat, sizeof(idat), "%s/%02d", cont, i);
-		snprintf(odat, sizeof(idat), "%s/%02do", cont, i);
+		snprintf(odat, sizeof(odat), "%s/%02do", cont, i);
 		if (!util_isfile(idat) || !util_isfile(odat))
 			break;
 		util_cp(idat, tdir_i);
-		if (!failed) {
-			chown(tdir_i, TESTUID, TESTGID);
-			chown(tdir_x, TESTUID, TESTGID);
-			chmod(tdir_i, 0600);
-			beg_ms = util_ts();
+		chown(tdir_i, TESTUID, TESTGID);
+		chown(tdir_x, TESTUID, TESTGID);
+		chmod(tdir_i, 0600);
+		beg_ms = util_ts();
+		if (cmt != 'E')
 			cmt = ct_exec(args, tdir, ".i", ".o", "/dev/null");
-			end_ms = util_ts();
-			if (cmt)
-				failed = 1;
-			if (!cmt && util_isfile(tdir_o) && !util_cmp(odat, tdir_o))
-				passes++;
-			if (!cmt)
-				tot_ms += end_ms - beg_ms;
+		end_ms = util_ts();
+		stat[i] = cmt;
+		if (!cmt) {
+			tot_ms += end_ms - beg_ms;
+			stat[i] = 'W';
+			if (util_isfile(tdir_o) && !util_cmp(odat, tdir_o))
+				stat[i] = 'C';
 		}
 		unlink(tdir_i);
 		unlink(tdir_o);
 	}
 	unlink(tdir_x);
 	rmdir(tdir);			/* fails if tdir is not empty */
-	if (!cmt)
-		cmt = passes == i ? "Success" : "Wrong Answer";
-	printf("%d/%d\t%ld.%02ld\t# %s!\n",
-		passes, i, tot_ms / 1000, (tot_ms % 1000) / 10, cmt);
+	for (i = 0; stat[i]; i++)
+		if (stat[i] == 'C')
+			cor++;
+	printf("%d/%d\t%ld.%02ld\t# %s%c\n",
+		cor, i, tot_ms / 1000, (tot_ms % 1000) / 10,
+		stat, i == cor ? '.' : '!');
 	return 0;
 }
