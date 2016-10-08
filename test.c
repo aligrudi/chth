@@ -20,6 +20,22 @@
 #define MAXFILE		(12)		/* file count limit */
 #define MAXFILESIZE	(1l << 30)	/* file size limit */
 
+#define LEN(a)		((sizeof(a)) / sizeof((a)[0]))
+
+/* supported languages */
+static struct lang {
+	char *name;		/* language name */
+	char *intr[16];		/* interpreter arguments (SRC=source) */
+	char *comp[16];		/* compiler arguments (OUT=output, SRC=source) */
+} langs[] = {
+	{"sh", {"bash", "SRC"}},
+	{"py", {"python", "SRC"}},
+	{"py2", {"python2", "SRC"}},
+	{"py3", {"python3", "SRC"}},
+	{"c", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"c++", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+};
+
 /* current time stamp in milliseconds */
 static long util_ts(void)
 {
@@ -93,25 +109,21 @@ static int util_cp(char *spath, char *dpath)
 	return failed;
 }
 
-static char *getinterpreter(char *lang)
+static char **getinterpreter(char *lang)
 {
-	if (lang && !strcmp("sh", lang))
-		return "sh";
-	if (lang && !strcmp("py", lang))
-		return "python";
-	if (lang && !strcmp("py2", lang))
-		return "python2";
-	if (lang && !strcmp("py3", lang))
-		return "python3";
+	int i;
+	for (i = 0; i < LEN(langs); i++)
+		if (!strcmp(langs[i].name, lang))
+			return langs[i].intr[0] ? langs[i].intr : NULL;
 	return NULL;
 }
 
-static char *getcompiler(char *lang)
+static char **getcompiler(char *lang)
 {
-	if (lang && !strcmp("c", lang))
-		return "cc";
-	if (lang && (!strcmp("c++", lang) || !strcmp("cpp", lang)))
-		return "c++";
+	int i;
+	for (i = 0; i < LEN(langs); i++)
+		if (!strcmp(langs[i].name, lang))
+			return langs[i].comp[0] ? langs[i].comp : NULL;
 	return NULL;
 }
 
@@ -187,8 +199,9 @@ static char *ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *ep
 
 static int compilefile(char *src, char *lang, char *out)
 {
-	char *cc = lang ? getcompiler(lang) : NULL;
-	char *argv[] = {cc, "-O2", "-pthread", "-o", out, src, "-lm", NULL};
+	char **cc = lang ? getcompiler(lang) : NULL;
+	char *args[16];
+	int i;
 	if (cc) {
 		int pid = fork();
 		int st;
@@ -201,7 +214,15 @@ static int compilefile(char *src, char *lang, char *out)
 			open("/dev/null", O_WRONLY);
 			close(2);
 			open("/dev/null", O_WRONLY);
-			execvp(argv[0], argv);
+			for (i = 0; i + 1 < LEN(args) && cc[i]; i++) {
+				args[i] = cc[i];
+				if (!strcmp("SRC", cc[i]))
+					args[i] = src;
+				if (!strcmp("OUT", cc[i]))
+					args[i] = out;
+			}
+			args[i] = NULL;
+			execvp(args[0], args);
 			exit(1);
 		}
 		if (waitpid(pid, &st, 0) != pid)
@@ -216,7 +237,7 @@ int main(int argc, char *argv[])
 	char *cont, *prog, *lang, *cmt = NULL;
 	char idat[LLEN], odat[LLEN];
 	char tdir[LLEN], tdir_i[LLEN], tdir_o[LLEN], tdir_s[LLEN], tdir_x[LLEN];
-	char *args[4];
+	char *args[16];
 	long beg_ms, end_ms, tot_ms = 0;
 	int passes = 0, failed = 0, i;
 	if (argc != 4) {
@@ -248,9 +269,14 @@ int main(int argc, char *argv[])
 		cmt = "Compilation Error";
 	}
 	unlink(tdir_s);
-	args[0] = getinterpreter(lang) ? getinterpreter(lang) : tdir_x;
-	args[1] = getinterpreter(lang) ? tdir_x : NULL;
-	args[2] = NULL;
+	if (getinterpreter(lang)) {
+		char **intr = getinterpreter(lang);
+		for (i = 0; i < LEN(args) && intr[i]; i++)
+			args[i] = !strcmp("SRC", intr[i]) ? tdir_x : intr[i];
+	} else {
+		args[0] = tdir_x;
+		args[1] = NULL;
+	}
 	chmod(tdir_x, 0700);
 	for (i = 0; i < 100; i++) {
 		snprintf(idat, sizeof(idat), "%s/%02d", cont, i);
