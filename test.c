@@ -194,7 +194,7 @@ static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epat
 			return 'R';
 		return 0;
 	}
-	return 'F';
+	return 'R';
 }
 
 static int compilefile(char *src, char *lang, char *out)
@@ -295,9 +295,9 @@ int main(int argc, char *argv[])
 		stat[i] = cmt;
 		if (!cmt) {
 			tot_ms += end_ms - beg_ms;
-			stat[i] = 'W';
+			stat[i] = 'F';
 			if (util_isfile(tdir_o) && !util_cmp(odat, tdir_o))
-				stat[i] = 'C';
+				stat[i] = 'P';
 		}
 		unlink(tdir_i);
 		unlink(tdir_o);
@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
 	unlink(tdir_x);
 	rmdir(tdir);			/* fails if tdir is not empty */
 	for (i = 0; stat[i]; i++)
-		if (stat[i] == 'C')
+		if (stat[i] == 'P')
 			cor++;
 	printf("%d/%d\t%ld.%02ld\t# %s%c\n",
 		cor, i, tot_ms / 1000, (tot_ms % 1000) / 10,
