@@ -25,15 +25,16 @@
 /* supported languages */
 static struct lang {
 	char *name;		/* language name */
+	char *file;		/* source file name */
 	char *intr[16];		/* interpreter arguments (SRC=source) */
 	char *comp[16];		/* compiler arguments (OUT=output, SRC=source) */
 } langs[] = {
-	{"sh", {"bash", "SRC"}},
-	{"py", {"python", "SRC"}},
-	{"py2", {"python2", "SRC"}},
-	{"py3", {"python3", "SRC"}},
-	{"c", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
-	{"c++", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"sh", "s.sh", {"bash", "SRC"}},
+	{"py", "s.py", {"python", "SRC"}},
+	{"py2", "s.py", {"python2", "SRC"}},
+	{"py3", "s.py", {"python3", "SRC"}},
+	{"c", "s.c", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"c++", "s.c++", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
 };
 
 /* current time stamp in milliseconds */
@@ -95,12 +96,11 @@ static int util_cp(char *spath, char *dpath)
 	FILE *dst = fopen(dpath, "w");
 	char buf[1024];
 	int failed = 0;
-	if (!src || !dst) {
+	int nr;
+	if (!src || !dst)
 		failed = 1;
-		return 1;
-	}
-	while (!failed && fgets(buf, sizeof(buf), src))
-		if (fputs(buf, dst) < 0)
+	while (!failed && (nr = fread(buf, 1, sizeof(buf), src)) > 0)
+		if (fwrite(buf, 1, nr, dst) < nr)
 			failed = 1;
 	if (src)
 		fclose(src);
@@ -109,7 +109,19 @@ static int util_cp(char *spath, char *dpath)
 	return failed;
 }
 
-static char **getinterpreter(char *lang)
+static int util_install(char *spath, char *dpath, int usr, int grp, int mod)
+{
+	if (util_cp(spath, dpath))
+		return 1;
+	if (chown(dpath, usr, grp))
+		return 1;
+	if (chmod(dpath, mod))
+		return 1;
+	return 0;
+}
+
+/* return interpreter arguments for the given language */
+static char **lang_intr(char *lang)
 {
 	int i;
 	for (i = 0; i < LEN(langs); i++)
@@ -118,12 +130,23 @@ static char **getinterpreter(char *lang)
 	return NULL;
 }
 
-static char **getcompiler(char *lang)
+/* return compiler arguments for the given language */
+static char **lang_comp(char *lang)
 {
 	int i;
 	for (i = 0; i < LEN(langs); i++)
 		if (!strcmp(langs[i].name, lang))
 			return langs[i].comp[0] ? langs[i].comp : NULL;
+	return NULL;
+}
+
+/* return source file name for the given language */
+static char *lang_file(char *lang)
+{
+	int i;
+	for (i = 0; i < LEN(langs); i++)
+		if (!strcmp(langs[i].name, lang))
+			return langs[i].file;
 	return NULL;
 }
 
@@ -199,7 +222,7 @@ static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epat
 
 static int compilefile(char *src, char *lang, char *out)
 {
-	char **cc = lang ? getcompiler(lang) : NULL;
+	char **cc = lang ? lang_comp(lang) : NULL;
 	char *args[16];
 	int i;
 	if (cc) {
@@ -235,12 +258,19 @@ static int compilefile(char *src, char *lang, char *out)
 int main(int argc, char *argv[])
 {
 	char *cont, *prog, *lang;
-	char idat[LLEN], odat[LLEN];
-	char tdir[LLEN], tdir_i[LLEN], tdir_o[LLEN], tdir_s[LLEN], tdir_x[LLEN];
+	char idat[LLEN], odat[LLEN];	/* input and output files */
+	char vdat[LLEN];		/* verifier program */
+	char tdir[LLEN];		/* testing directory */
+	char tdir_i[LLEN], tdir_o[LLEN];/* input and output files in tdir */
+	char tdir_s[LLEN];		/* source file in tdir */
+	char tdir_x[LLEN];		/* compiled source in tdir */
+	char tdir_v[LLEN];		/* verifier program in tdir */
+	char tdir_r[LLEN];		/* varifier output in tdir */
+	int score = 0;			/* total score */
 	char stat[128] = "";
 	char *args[16];
 	long beg_ms, end_ms, tot_ms = 0;
-	int cor = 0;
+	int passed = 1;
 	int cmt = 0;
 	int i;
 	if (argc != 4) {
@@ -261,54 +291,74 @@ int main(int argc, char *argv[])
 	snprintf(tdir, sizeof(tdir), "/tmp/ct%06d", getpid());
 	snprintf(tdir_i, sizeof(tdir_i), "%s/.i", tdir);
 	snprintf(tdir_o, sizeof(tdir_o), "%s/.o", tdir);
-	snprintf(tdir_s, sizeof(tdir_s), "%s/p.%s", tdir, lang);
+	snprintf(tdir_s, sizeof(tdir_s), "%s/%s", tdir, lang_file(lang));
 	snprintf(tdir_x, sizeof(tdir_x), "%s/.x", tdir);
+	snprintf(tdir_v, sizeof(tdir_v), "%s/.v", tdir);
+	snprintf(tdir_r, sizeof(tdir_r), "%s/.r", tdir);
 	mkdir(tdir, 0700);
 	chown(tdir, TESTUID, TESTGID);
-	util_cp(prog, tdir_s);
-	chown(tdir_s, TESTUID, TESTGID);
+	util_install(prog, tdir_s, TESTUID, TESTGID, 0600);
 	if (compilefile(tdir_s, lang, tdir_x))
 		cmt = 'E';
 	unlink(tdir_s);
-	if (getinterpreter(lang)) {
-		char **intr = getinterpreter(lang);
+	if (lang_intr(lang)) {
+		char **intr = lang_intr(lang);
 		for (i = 0; i < LEN(args) && intr[i]; i++)
 			args[i] = !strcmp("SRC", intr[i]) ? tdir_x : intr[i];
 	} else {
 		args[0] = tdir_x;
 		args[1] = NULL;
 	}
+	chown(tdir_x, TESTUID, TESTGID);
 	chmod(tdir_x, 0700);
 	for (i = 0; i < 100; i++) {
 		snprintf(idat, sizeof(idat), "%s/%02d", cont, i);
 		snprintf(odat, sizeof(odat), "%s/%02do", cont, i);
-		if (!util_isfile(idat) || !util_isfile(odat))
+		snprintf(vdat, sizeof(vdat), "%s/%02dv", cont, i);
+		if (!util_isfile(idat) || (!util_isfile(odat) &&
+						!util_isfile(vdat)))
 			break;
-		util_cp(idat, tdir_i);
-		chown(tdir_i, TESTUID, TESTGID);
-		chown(tdir_x, TESTUID, TESTGID);
-		chmod(tdir_i, 0600);
+		util_install(idat, tdir_i, TESTUID, TESTGID, 0600);
 		beg_ms = util_ts();
 		if (cmt != 'E')
 			cmt = ct_exec(args, tdir, ".i", ".o", "/dev/null");
 		end_ms = util_ts();
-		stat[i] = cmt;
-		if (!cmt) {
-			tot_ms += end_ms - beg_ms;
-			stat[i] = 'F';
+		tot_ms += end_ms - beg_ms;
+		if (!cmt && util_isfile(odat)) {	/* expected file */
+			cmt = 'F';
 			if (util_isfile(tdir_o) && !util_cmp(odat, tdir_o))
-				stat[i] = 'P';
+				cmt = 'P';
+			score += cmt == 'P';
 		}
+		if (!cmt && !util_isfile(odat)) {	/* verifier program */
+			char *args_check[] = {"./.v", NULL};
+			FILE *filp;
+			util_install(idat, tdir_i, TESTUID, TESTGID, 0600);
+			util_install(vdat, tdir_v, TESTUID, TESTGID, 0700);
+			cmt = 'P';
+			if (ct_exec(args_check, tdir, ".o", ".r", "/dev/null"))
+				cmt = 'F';
+			filp = fopen(tdir_r, "r");
+			if (filp) {
+				int score_cur;
+				if (fscanf(filp, "%d", &score_cur) == 1)
+					score += score_cur;
+				fclose(filp);
+			}
+			unlink(tdir_v);
+			unlink(tdir_r);
+		}
+		stat[i] = cmt;
 		unlink(tdir_i);
 		unlink(tdir_o);
 	}
+	for (i = 0; stat[i] && passed; i++)
+		passed = stat[i] == 'P';
 	unlink(tdir_x);
 	rmdir(tdir);			/* fails if tdir is not empty */
-	for (i = 0; stat[i]; i++)
-		if (stat[i] == 'P')
-			cor++;
 	printf("%d/%d\t%ld.%02ld\t# %s%c\n",
-		cor, i, tot_ms / 1000, (tot_ms % 1000) / 10,
-		stat, i == cor ? '.' : '!');
+		score, (int) strlen(stat),
+		tot_ms / 1000, (tot_ms % 1000) / 10,
+		stat, passed ? '.' : '!');
 	return 0;
 }
