@@ -11,7 +11,11 @@ the address of open contests as its arguments:
 Each contest is specified as a directory containing several pairs of
 files, each of which specify a test case: the file XY, in which X and
 Y are both digits, is the input and XYo is the expected output (such
-as 00 and 00o).
+as 00 and 00o).  Alternatively, instead of the expected output file,
+a verifier program (named XYv) can verify the output and print a
+score for the test.  The verifier program can read test case input
+from a file named .i and submitted program's output from a file
+named .o.
 
 The server listens on TCP port 40 for incoming connections.  Each
 incoming connection can make one of the following requests:
