@@ -18,7 +18,7 @@
 #define MAXMEM		(500l << 20)	/* memory limit */
 #define MAXPROC		(12)		/* process count limit */
 #define MAXFILE		(12)		/* file count limit */
-#define MAXFILESIZE	(1l << 30)	/* file size limit */
+#define MAXFILESIZE	(1l << 22)	/* file size limit */
 
 #define LEN(a)		((sizeof(a)) / sizeof((a)[0]))
 
@@ -167,7 +167,7 @@ static void util_slaughter(void)
 	}
 }
 
-/* execute epath, with ipath as stdin and opath as stdout; return NULL on success */
+/* execute epath, with ipath as stdin and opath as stdout; return zero on success */
 static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epath)
 {
 	int pid, st;
