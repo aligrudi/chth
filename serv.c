@@ -35,20 +35,21 @@
 #include <unistd.h>
 #include "conn.h"
 
-#define CTPORT		"40"		/* server port */
+#define CTPORT		"40"		/* default server port */
 #define CTCONNS		16		/* maximum simultaneous connections */
 #define LLEN		256		/* maximum input line length */
 #define CTSUBS		32		/* maximum queued submissions */
-#define CTSUBSZ		(1 << 16)	/* maximum submission size */
 #define CTTIMEOUT	10		/* connection timeout in seconds */
-#define CTREGTIME	10		/* minimum gap between registerations */
-#define CTSUBTIME	10		/* minimum gap between submissions of a user */
+#define CTRATECNT	32		/* user count in ratelimit_* */
+#define CTSUBSZ		(1 << 16)	/* maximum submission size */
 #define CTUSERS		"USERS"		/* file containing the list of users */
 #define CTLOGS		"logs"		/* directory to store the logs */
 #define CTTEST		"./test"	/* verification program */
 #define CTRESULT	"logs/test.out"	/* verification results file */
 #define CTEOF		"EOF\n"		/* default eof mark */
-#define CTRATECNT	32		/* user count in ratelimit_* */
+
+static int ct_reggap = 40;	/* minimum gap between registerations */
+static int ct_subgap = 120;	/* minimum gap between submissions of a user */
 
 #define LEN(a)		((sizeof(a)) / sizeof((a)[0]))
 
@@ -105,8 +106,8 @@ static long ratelimit_ts[CTRATECNT];		/* last submission timestamp */
 static int ratelimit_register(void)
 {
 	static long ts;
-	if (ts && ts + CTREGTIME > time(NULL))
-		return 1;
+	if (ts && ts + ct_reggap > time(NULL))
+		return ts + ct_reggap - time(NULL);
 	ts = time(NULL);
 	return 0;
 }
@@ -118,8 +119,8 @@ static int ratelimit_submit(char *user)
 	for (i = 0; i < LEN(ratelimit_ts); i++)
 		if (!strcmp(ratelimit_user[i], user))
 			break;
-	if (i < LEN(ratelimit_ts) && ratelimit_ts[i] + CTSUBTIME > now)
-		return 1;
+	if (i < LEN(ratelimit_ts) && ratelimit_ts[i] + ct_subgap > now)
+		return ratelimit_ts[i] + ct_subgap - now;
 	if (i == LEN(ratelimit_ts)) {
 		i = 0;
 		for (j = 0; j < LEN(ratelimit_ts); j++)
@@ -249,6 +250,7 @@ static void sigchild(int sig)
 static int ct_register(struct conn *conn, char *req)
 {
 	char user[LLEN], pass[LLEN];
+	int gap;
 	int i;
 	if (sscanf(req, "register %s %s", user, pass) != 2) {
 		conn_printf(conn, "register: insufficient arguments!\n");
@@ -273,8 +275,8 @@ static int ct_register(struct conn *conn, char *req)
 		conn_printf(conn, "register: user exists!\n");
 		return 1;
 	}
-	if (ratelimit_register()) {
-		conn_printf(conn, "register: many registerations, retry later!\n");
+	if ((gap = ratelimit_register())) {
+		conn_printf(conn, "register: retry %d seconds later!\n", gap);
 		return 1;
 	}
 	users_add(user, pass);
@@ -360,6 +362,7 @@ static int ct_submit(struct conn *conn, char *req)
 	char path[LLEN], end[LLEN];
 	void *buf;
 	long buflen;
+	int gap;
 	int fd;
 	endmarker(req, end);
 	if (conn_ends(conn, end))
@@ -376,8 +379,8 @@ static int ct_submit(struct conn *conn, char *req)
 		conn_printf(conn, "submit: unknown language!\n");
 		return 1;
 	}
-	if (ratelimit_submit(user)) {
-		conn_printf(conn, "submit: many submissions, retry later!\n");
+	if ((gap = ratelimit_submit(user))) {
+		conn_printf(conn, "submit: retry %d seconds later!\n", gap);
 		return 1;
 	}
 	if (users_login(user, pass)) {
@@ -502,12 +505,35 @@ static int ct_poll(int fd)
 	return 0;
 }
 
+static void printusage(char *prog)
+{
+	printf("Usage: %s [options] cont1 ... contn\n\n", prog);
+	printf("Options:\n");
+	printf("  -p port \t set server port number (%s)\n", CTPORT);
+	printf("  -s n    \t minimum gap between submissions (%d)\n", ct_subgap);
+	printf("  -r n    \t minimum gap between registerations (%d)\n", ct_reggap);
+}
+
 int main(int argc, char *argv[])
 {
+	char *port = CTPORT;
 	int ifd;
-	conts = argv + 1;
-	conts_n = argc - 1;
-	ifd = mksocket(NULL, CTPORT);
+	int i;
+	for (i = 1; i < argc && argv[i][0] == '-'; i++) {
+		if (argv[i][1] == 'p')
+			port = argv[i][2] ? argv[i] + 2 : argv[++i];
+		if (argv[i][1] == 'r')
+			ct_reggap = atoi(argv[i][2] ? argv[i] + 2 : argv[++i]);
+		if (argv[i][1] == 's')
+			ct_subgap = atoi(argv[i][2] ? argv[i] + 2 : argv[++i]);
+		if (argv[i][1] == 'h') {
+			printusage(argv[0]);
+			return 0;
+		}
+	}
+	conts = argv + i;
+	conts_n = argc - i;
+	ifd = mksocket(NULL, port);
 	signal(SIGCHLD, sigchild);
 	while (!ct_poll(ifd))
 		;
