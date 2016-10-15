@@ -76,7 +76,7 @@ static int test_pid;			/* pid of verifying program */
 static int test_idx;			/* index of the program being tested */
 
 /* return a server socket listening on the given port */
-static int mksocket(char *addr, char *port)
+static int util_mksocket(char *addr, char *port)
 {
 	struct addrinfo hints, *addrinfo;
 	int fd;
@@ -98,6 +98,26 @@ static int mksocket(char *addr, char *port)
 		return -1;
 	freeaddrinfo(addrinfo);
 	return fd;
+}
+
+/* copy spath into dpath */
+static int util_cp(char *spath, char *dpath)
+{
+	FILE *src = fopen(spath, "r");
+	FILE *dst = fopen(dpath, "w");
+	char buf[1024];
+	int failed = 0;
+	int nr;
+	if (!src || !dst)
+		failed = 1;
+	while (!failed && (nr = fread(buf, 1, sizeof(buf), src)) > 0)
+		if (fwrite(buf, 1, nr, dst) < nr)
+			failed = 1;
+	if (src)
+		fclose(src);
+	if (dst)
+		fclose(dst);
+	return failed;
 }
 
 static char ratelimit_user[CTRATECNT][LLEN];	/* submission user log */
@@ -182,6 +202,7 @@ static int subs_first(void)
 /* queue the given submission */
 static int subs_add(char *user, char *cont, char *lang, char *path)
 {
+	char backup[LLEN];
 	int i;
 	for (i = 0; i < LEN(subs); i++) {
 		if (!subs[i].valid) {
@@ -191,6 +212,9 @@ static int subs_add(char *user, char *cont, char *lang, char *path)
 			strcpy(subs[i].path, path);
 			strcpy(subs[i].user, user);
 			subs[i].valid = 1;
+			snprintf(backup, sizeof(backup), "%s/%s-%ld-%s.%s",
+				CTLOGS, cont, subs[i].date, user, lang);
+			util_cp(path, backup);
 			return 0;
 		}
 	}
@@ -533,7 +557,7 @@ int main(int argc, char *argv[])
 	}
 	conts = argv + i;
 	conts_n = argc - i;
-	ifd = mksocket(NULL, port);
+	ifd = util_mksocket(NULL, port);
 	signal(SIGCHLD, sigchild);
 	while (!ct_poll(ifd))
 		;
