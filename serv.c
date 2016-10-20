@@ -368,7 +368,7 @@ static void endmarker(char *req, char *end)
 }
 
 static char *ct_langs[] = {
-	"c", "c++", "py", "py2", "py3", "sh", "elf",
+	"c", "c++", "py", "py2", "py3", "sh", "java", "elf",
 };
 
 static int langok(char *lang)

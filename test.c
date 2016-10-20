@@ -26,15 +26,17 @@
 static struct lang {
 	char *name;		/* language name */
 	char *file;		/* source file name */
+	char *exec;		/* executable file name */
 	char *intr[16];		/* interpreter arguments (SRC=source) */
 	char *comp[16];		/* compiler arguments (OUT=output, SRC=source) */
 } langs[] = {
-	{"sh", "s.sh", {"bash", "SRC"}},
-	{"py", "s.py", {"python", "SRC"}},
-	{"py2", "s.py", {"python2", "SRC"}},
-	{"py3", "s.py", {"python3", "SRC"}},
-	{"c", "s.c", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
-	{"c++", "s.c++", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"sh", "s.sh", ".x", {"bash", "SRC"}},
+	{"py", "s.py", ".x", {"python", "SRC"}},
+	{"py2", "s.py", ".x", {"python2", "SRC"}},
+	{"py3", "s.py", ".x", {"python3", "SRC"}},
+	{"c", "s.c", ".x", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"c++", "s.c++", ".x", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"java", "Main.java", "Main.class", {"java", "-Xms64m", "-Xmx512m", "Main"}, {"javac", "SRC"}},
 };
 
 /* current time stamp in milliseconds */
@@ -147,6 +149,16 @@ static char *lang_file(char *lang)
 	for (i = 0; i < LEN(langs); i++)
 		if (!strcmp(langs[i].name, lang))
 			return langs[i].file;
+	return NULL;
+}
+
+/* return compiler output file name for the given language */
+static char *lang_exec(char *lang)
+{
+	int i;
+	for (i = 0; i < LEN(langs); i++)
+		if (!strcmp(langs[i].name, lang))
+			return langs[i].exec;
 	return NULL;
 }
 
@@ -292,7 +304,7 @@ int main(int argc, char *argv[])
 	snprintf(tdir_i, sizeof(tdir_i), "%s/.i", tdir);
 	snprintf(tdir_o, sizeof(tdir_o), "%s/.o", tdir);
 	snprintf(tdir_s, sizeof(tdir_s), "%s/%s", tdir, lang_file(lang));
-	snprintf(tdir_x, sizeof(tdir_x), "%s/.x", tdir);
+	snprintf(tdir_x, sizeof(tdir_x), "%s/%s", tdir, lang_exec(lang));
 	snprintf(tdir_v, sizeof(tdir_v), "%s/.v", tdir);
 	snprintf(tdir_r, sizeof(tdir_r), "%s/.r", tdir);
 	mkdir(tdir, 0700);
