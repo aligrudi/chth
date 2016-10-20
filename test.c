@@ -196,7 +196,7 @@ static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epat
 		setrlimit(RLIMIT_FSIZE, &rlp);
 		rlp.rlim_cur = MAXMEM;
 		rlp.rlim_cur = MAXMEM;
-		setrlimit(RLIMIT_AS, &rlp);
+		setrlimit(RLIMIT_DATA, &rlp);
 		rlp.rlim_cur = MAXPROC;
 		rlp.rlim_cur = MAXPROC;
 		setrlimit(RLIMIT_NPROC, &rlp);
