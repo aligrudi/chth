@@ -35,8 +35,9 @@ static struct lang {
 	{"py2", "s.py", ".x", {"python2", "SRC"}},
 	{"py3", "s.py", ".x", {"python3", "SRC"}},
 	{"c", "s.c", ".x", {NULL}, {"cc", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
-	{"c++", "s.c++", ".x", {NULL}, {"c++", "-O2", "-pthread", "-o", "OUT", "SRC", "-lm"}},
+	{"c++", "s.c++", ".x", {NULL}, {"c++", "-O2", "-std=c++11", "-pthread", "-o", "OUT", "SRC", "-lm"}},
 	{"java", "Main.java", "Main.class", {"java", "-Xms64m", "-Xmx512m", "Main"}, {"javac", "SRC"}},
+	{"elf", "out", ".x"},
 };
 
 /* current time stamp in milliseconds */
