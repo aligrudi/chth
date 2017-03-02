@@ -344,7 +344,7 @@ int main(int argc, char *argv[])
 			score += cmt == 'P';
 		}
 		if (!cmt && !util_isfile(odat)) {	/* verifier program */
-			char *args_check[] = {"./.v", NULL};
+			char *args_check[] = {"./.v", ".i", ".o", NULL};
 			FILE *filp;
 			util_install(idat, tdir_i, TESTUID, TESTGID, 0600);
 			util_install(vdat, tdir_v, TESTUID, TESTGID, 0700);
