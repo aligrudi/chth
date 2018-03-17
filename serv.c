@@ -380,6 +380,16 @@ static int langok(char *lang)
 	return 0;
 }
 
+static int ct_write(int fd, void *buf, int buflen)
+{
+	unsigned char *s = buf;
+	if (buflen >= 3 && s[0] == 0xef && s[1] == 0xbb && s[2] == 0xbf) {
+		buf += 3;	/* skip windows BOM */
+		buflen -= 3;
+	}
+	return write(fd, buf, buflen);
+}
+
 static int ct_submit(struct conn *conn, char *req)
 {
 	char user[LLEN], pass[LLEN], cont[LLEN], lang[LLEN];
@@ -425,7 +435,7 @@ static int ct_submit(struct conn *conn, char *req)
 	}
 	conn_recvall(conn, &buf, &buflen);
 	buflen -= strlen(end);
-	write(fd, buf, buflen);
+	ct_write(fd, buf, buflen);
 	free(buf);
 	close(fd);
 	if (!subs_add(user, cont, lang, path))
