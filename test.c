@@ -190,16 +190,16 @@ static int ct_exec(char **argv, char *tdir, char *ipath, char *opath, char *epat
 		chdir(tdir);
 		nice(1);
 		rlp.rlim_cur = MAXFILE;
-		rlp.rlim_cur = MAXFILE;
+		rlp.rlim_max = MAXFILE;
 		setrlimit(RLIMIT_NOFILE, &rlp);
 		rlp.rlim_cur = MAXFILESIZE;
-		rlp.rlim_cur = MAXFILESIZE;
+		rlp.rlim_max = MAXFILESIZE;
 		setrlimit(RLIMIT_FSIZE, &rlp);
 		rlp.rlim_cur = MAXMEM;
-		rlp.rlim_cur = MAXMEM;
+		rlp.rlim_max = MAXMEM;
 		setrlimit(RLIMIT_DATA, &rlp);
 		rlp.rlim_cur = MAXPROC;
-		rlp.rlim_cur = MAXPROC;
+		rlp.rlim_max = MAXPROC;
 		setrlimit(RLIMIT_NPROC, &rlp);
 		if (setgid(TESTUID) || setuid(TESTUID))
 			exit(1);
