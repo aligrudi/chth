@@ -15,8 +15,8 @@
 #define TIMEOUT		2000		/* process timeout in milliseconds */
 #define WAITDELAY	5		/* delay after each waitpid() in milliseconds */
 #define LLEN		256
-#define MAXMEM		(500l << 20)	/* memory limit */
-#define MAXPROC		(12)		/* process count limit */
+#define MAXMEM		(512l << 20)	/* memory limit */
+#define MAXPROC		(48)		/* process count limit */
 #define MAXFILE		(12)		/* file count limit */
 #define MAXFILESIZE	(1l << 22)	/* file size limit */
 
